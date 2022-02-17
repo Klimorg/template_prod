@@ -220,6 +220,23 @@ def draw_detection(
                     2,
                 )
 
+    # def draw_image(self, image, response):
+    #     """
+    # 	Draws on image and saves it.
+    # 	:param image: image of type pillow image
+    # 	:param response: inference response
+    # 	:return:
+    # 	"""
+    #     draw = ImageDraw.Draw(image)
+    #     for bbox in response['bounding-boxes']:
+    #         draw.rectangle([bbox['coordinates']['left'], bbox['coordinates']['top'], bbox['coordinates']['right'],
+    #                         bbox['coordinates']['bottom']], outline="red")
+    #         left = bbox['coordinates']['left']
+    #         top = bbox['coordinates']['top']
+    #         conf = "{0:.2f}".format(bbox['confidence'])
+    #         draw.text((int(left), int(top) - 20), str(conf) + "% " + str(bbox['ObjectClassName']), 'red', self.font)
+    #     image.save('/main/result.jpg', 'PNG')
+
     logger.info(f"{true_levures} levures trouvées.")
     levure_confidence = float(np.mean(mean_scores_levure)) if true_levures != 0 else 1
     logger.info(

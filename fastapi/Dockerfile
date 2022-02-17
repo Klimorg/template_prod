@@ -9,6 +9,7 @@ COPY requirements.txt /fastapi
 
 WORKDIR /fastapi
 
+RUN /usr/local/bin/python -m pip install --upgrade pip
 RUN pip install -r requirements.txt
 
 COPY . /fastapi

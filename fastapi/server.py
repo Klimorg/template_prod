@@ -1,17 +1,14 @@
-import io
-from fileinput import filename
-
 from detection import get_detections, get_detector
 from pydantic_models import SegmentationReport
 from segmentation import get_segmentator, get_segments
-from starlette.responses import RedirectResponse, Response
 
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse, Response
 
 session_segmentation = get_segmentator()
 
-session_detection, img_size_h, img_size_w = get_detector()
+# session_detection, img_size_h, img_size_w = get_detector()
 
 app = FastAPI(
     title="CITC image segmentation",
