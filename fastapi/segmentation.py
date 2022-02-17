@@ -13,14 +13,14 @@ from skimage.measure import label, regionprops
 
 def get_segmentator() -> rt.InferenceSession:
 
-    providers = ["CPUExecutionProvider"]
+    providers = ["CPUExecutionProvider"]  # ['CUDAExecutionProvider']
     session = rt.InferenceSession("./models/model_ML_v2.onnx", providers=providers)
     batch_size = session.get_inputs()[0].shape[0]
     img_size_h = session.get_inputs()[0].shape[2]
     channels = session.get_inputs()[0].shape[3]
 
     logger.info(
-        f"Model loaded. Batch_size: {batch_size}, size: {img_size_h}, channels: {channels}."
+        f"Model loaded. Batch_size: {batch_size}, size: {img_size_h}, channels: {channels}.",
     )
 
     return session
@@ -37,7 +37,7 @@ def preprocess(image: Image.Image, stride: int) -> npt.NDArray:
         product(
             range(0, height - height % stride, stride),
             range(0, width - width % stride, stride),
-        )
+        ),
     )
     for idy, idx in grid:
         box = (idx, idy, idx + stride, idy + stride)
@@ -80,7 +80,9 @@ def postprocess(
 
 
 def compute_segmentation_score(
-    labeled_mask: np.ndarray, probabilities: np.ndarray, num_segment: int
+    labeled_mask: np.ndarray,
+    probabilities: np.ndarray,
+    num_segment: int,
 ) -> float:
     """Compute the segmentation score of a given segmented zone.
 
@@ -186,7 +188,9 @@ def draw_detection(
     if num_levures != 0:
         for prop, idx_segment in zip(props_levure, range(num_levures)):
             mean_score = compute_segmentation_score(
-                labeled_levure, probabilities, idx_segment + 1
+                labeled_levure,
+                probabilities,
+                idx_segment + 1,
             )
             if mean_score > min_probability:
                 true_levures += 1
@@ -201,7 +205,9 @@ def draw_detection(
     if num_moisissures != 0:
         for prop, idx_segment in zip(props_moisissure, range(num_moisissures)):
             mean_score = compute_segmentation_score(
-                labeled_moisissure, probabilities, idx_segment + 1
+                labeled_moisissure,
+                probabilities,
+                idx_segment + 1,
             )
             if mean_score > min_probability:
                 true_moisissures += 1
@@ -217,7 +223,7 @@ def draw_detection(
     logger.info(f"{true_levures} levures trouvées.")
     levure_confidence = float(np.mean(mean_scores_levure)) if true_levures != 0 else 1
     logger.info(
-        "Probabilité moyenne pour les levures : " f"{levure_confidence * 100:.2f}"
+        "Probabilité moyenne pour les levures : " f"{levure_confidence * 100:.2f}",
     )
     logger.info(f"{true_moisissures} moisissures trouvées.")
     moisissure_confidence = (
@@ -225,7 +231,7 @@ def draw_detection(
     )
     logger.info(
         "Probabilité moyenne pour les moisissures : "
-        f"{moisissure_confidence * 100:.2f}"
+        f"{moisissure_confidence * 100:.2f}",
     )
     report = {
         "img_name": img_name,
@@ -253,7 +259,7 @@ def get_segments(session, binary_image):
 
     preprocessed_image = preprocess(input_image, 256)
     logger.info(
-        f"Preprocessing : {preprocessed_image.shape}, {type(preprocessed_image)}"
+        f"Preprocessing : {preprocessed_image.shape}, {type(preprocessed_image)}",
     )
 
     predicted_masks = session.run(["activation"], {"input": preprocessed_image})

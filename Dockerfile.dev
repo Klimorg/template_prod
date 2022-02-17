@@ -1,0 +1,23 @@
+FROM python:3.8.12
+
+ARG USERNAME=vorph
+ARG USER_UID=1000
+ARG USER_GID=1000
+
+
+RUN groupadd -g $USER_GID -o $USERNAME
+RUN useradd -m -u $USER_UID -g $USER_GID -o -s /bin/bash $USERNAME
+RUN apt-get install make
+
+
+USER $USERNAME
+
+ENV PATH "$PATH:/home/$USERNAME/.local/bin"
+
+RUN python -m pip install --upgrade pip
+ENV PATH "$PATH:/usr/lib/python3.10/dist-packages"
+
+WORKDIR /home/$USERNAME
+
+# 8000 pour fastapi
+EXPOSE 8000
