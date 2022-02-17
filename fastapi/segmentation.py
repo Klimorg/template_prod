@@ -57,15 +57,16 @@ def postprocess(
     # compute mask
     predicted_masks = np.argmax(inference[0], axis=-1)
 
+    # TODO : switch to einsum
     predicted_masks = (
         predicted_masks.reshape((4, 4, 256, 256))
         .transpose(0, 2, 1, 3)
         .reshape((4 * 256, 4 * 256))
     )
 
-    mask = predicted_masks.astype(np.float64) / 3  # normalize the data to 0 - 1
-    mask = 255 * mask  # Now scale by 255
-    mask = mask.astype(np.uint8)
+    # mask = predicted_masks.astype(np.float64) / 3  # normalize the data to 0 - 1
+    # mask = 255 * mask  # Now scale by 255
+    # mask = mask.astype(np.uint8)
 
     # compute probabilities
     probabilities = np.max(inference[0], axis=-1)
@@ -76,7 +77,19 @@ def postprocess(
         .reshape((4 * 256, 4 * 256))
     )
 
-    return mask, probabilities
+    return predicted_masks, probabilities
+
+
+def split_by_value(img: npt.NDArray, num_classes: int) -> npt.NDArray:
+    height, width = img.shape[0], img.shape[1]
+    split_mask = np.zeros((height, width))
+    split_mask = np.expand_dims(split_mask, axis=-1)
+    for idx in range(1, num_classes):
+        mask = img[:, :] == idx
+        mask = np.expand_dims(mask, axis=-1)
+        split_mask = np.concatenate((split_mask, mask), axis=-1)
+
+    return split_mask
 
 
 def compute_segmentation_score(
@@ -95,7 +108,7 @@ def compute_segmentation_score(
     Args:
         probabilities (np.ndarray): A numpy array of size (H,W) with float values in [0,1].
         labeled_mask (np.ndarray): A numpy array of size (H,W) with integer values.
-        num_segment (int): An integer corersponding to the zone we want to isolate.
+        num_segment (int): An integer corresponding to the zone we want to isolate.
 
     Returns:
         float: The mean probability of the isolated zone.
@@ -160,13 +173,9 @@ def draw_detection(
     """
 
     # draw detection results in resize image
-    img = cv2.imread(image_path)
-    img = cv2.resize(
-        img,
-        (img_size_w, img_size_h),
-        interpolation=cv2.INTER_LINEAR,
-    )
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img = Image.open(image_path)
+    img = img.resize((img_size_w, img_size_h), resample=Image.BILINEAR)
+    img = np.asarray(img)
 
     img_name = image_path.split("/")[-1]
 
