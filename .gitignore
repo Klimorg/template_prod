@@ -127,3 +127,11 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+
+# uptime kuma
+uptime-kuma/
+
+# datas
+data_*/
+

@@ -1,0 +1,33 @@
+version: '3'
+
+services:
+  fastapi_ecco:
+    build: fastapi/
+    networks:
+      - deploy_network
+    container_name: fastapi_ecco
+
+  streamlit:
+    build: streamlit/
+    depends_on:
+      - fastapi_ecco
+    ports:
+        - 8503:8503
+    networks:
+      - deploy_network
+    container_name: streamlit
+
+  uptime-kuma:
+    image: louislam/uptime-kuma
+    container_name: uptime_kuma
+    volumes:
+      - ./uptime-kuma:/app/data
+    networks:
+      - deploy_network
+    ports:
+      - 3001:3001
+
+
+networks:
+  deploy_network:
+    driver: bridge
