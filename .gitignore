@@ -135,3 +135,4 @@ uptime-kuma/**/*
 # datas
 data_*/**/*
 
+fastapi/models/**/*
