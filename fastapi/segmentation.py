@@ -1,5 +1,5 @@
-import io
 from itertools import product
+from pathlib import Path
 from typing import List, Tuple
 
 import cv2
@@ -11,121 +11,153 @@ from PIL import Image
 from skimage.measure import label, regionprops
 
 
-def get_segmentator() -> rt.InferenceSession:
+class InferenceEngine:
+    def __init__(
+        self,
+        providers: str,
+        model: str,
+        num_classes: int,
+        inference_img_dims: Tuple[int, int],
+    ):
+        self.providers = (
+            ["CPUExecutionProvider"]
+            if providers == "cpu"
+            else ["CUDAExecutionProvider"]
+        )
+        self.model = Path(model)
+        self.num_classes = num_classes
+        self.inference_img_dims = inference_img_dims
 
-    providers = ["CPUExecutionProvider"]  # ['CUDAExecutionProvider']
-    session = rt.InferenceSession("./models/model_ML_v2.onnx", providers=providers)
-    batch_size = session.get_inputs()[0].shape[0]
-    img_size_h = session.get_inputs()[0].shape[2]
-    channels = session.get_inputs()[0].shape[3]
+        self.engine = rt.InferenceSession(model, providers=providers)
 
-    logger.info(
-        f"Model loaded. Batch_size: {batch_size}, size: {img_size_h}, channels: {channels}.",
-    )
+    def preprocess(self, image: Image.Image, stride: int = 256) -> npt.NDArray:
 
-    return session
+        cropped_images = []
+
+        width, height = self.inference_img_dims[0], self.inference_img_dims[1]
+        image = image.resize((width, height))
+
+        grid = list(
+            product(
+                range(0, height - height % stride, stride),
+                range(0, width - width % stride, stride),
+            ),
+        )
+        for idy, idx in grid:
+            box = (idx, idy, idx + stride, idy + stride)
+
+            cropped_image = image.crop(box)
+            cropped_image = np.asarray(cropped_image).astype("float32") / 255
+
+            cropped_images.append(cropped_image)
+
+        return np.array(cropped_images)
+
+    def postprocess(
+        self,
+        inference: List[npt.NDArray[np.float32]],
+    ) -> Tuple[npt.NDArray[np.uint8], npt.NDArray]:
+
+        # compute mask
+        predicted_masks = np.argmax(inference[0], axis=-1)
+
+        # TODO : switch to einsum
+        predicted_masks = (
+            predicted_masks.reshape((4, 4, 256, 256))
+            .transpose(0, 2, 1, 3)
+            .reshape((4 * 256, 4 * 256))
+        )
+
+        # mask = predicted_masks.astype(np.float64) / 3  # normalize the data to 0 - 1
+        # mask = 255 * mask  # Now scale by 255
+        # mask = mask.astype(np.uint8)
+
+        # compute probabilities
+        probabilities = np.max(inference[0], axis=-1)
+
+        probabilities = (
+            probabilities.reshape((4, 4, 256, 256))
+            .transpose(0, 2, 1, 3)
+            .reshape((4 * 256, 4 * 256))
+        )
+
+        return predicted_masks, probabilities
+
+    def split_by_value(self, inference: npt.NDArray, num_classes: int) -> npt.NDArray:
+        height, width = inference.shape[0], inference.shape[1]
+        split_mask = np.zeros((height, width))
+        split_mask = np.expand_dims(split_mask, axis=-1)
+        for idx in range(1, num_classes):
+            mask = inference[:, :] == idx
+            mask = np.expand_dims(mask, axis=-1)
+            split_mask = np.concatenate((split_mask, mask), axis=-1)
+
+        return split_mask
+
+    def compute_segmentation_score(
+        self,
+        labeled_mask: npt.NDArray,
+        probabilities: npt.NDArray,
+        num_segment: int,
+    ) -> float:
+        """Compute the segmentation score of a given segmented zone.
+
+        Given a `labeled_mask` (ie a numpy array with only integer values),
+        and the corresponding `probabilities` (a numpy array of the same size where to each
+        element of the first correspond a probability, a float in [0,1].), isolate
+        the zone of the `labeled_mask` with only the value `num_segment` and compute
+        the associated mean probability (`mean_score_segment`) of this segment.
+
+        Args:
+            probabilities (np.ndarray): A numpy array of size (H,W) with float values in [0,1].
+            labeled_mask (np.ndarray): A numpy array of size (H,W) with integer values.
+            num_segment (int): An integer corresponding to the zone we want to isolate.
+
+        Returns:
+            float: The mean probability of the isolated zone.
+        """
+
+        segment = labeled_mask == num_segment
+        score_segment = probabilities * segment
+        area_segment = np.sum(score_segment > 0)
+
+        return np.sum(score_segment) / area_segment
+
+    def infer(self, image):
+        input_image = Image.open(image.file).convert("RGB")
+
+        preprocessed_image = self.preprocess(input_image, 256)
+
+        predicted_masks = self.engine.run(["activation"], {"input": preprocessed_image})
+
+        postprocessed_masks, postprocessed_probabilities = self.postprocess(
+            predicted_masks,
+        )
+
+        # return Image.fromarray(postprocessed_masks).resize((1024, 1024))
+
+        return postprocessed_masks
 
 
-def preprocess(image: Image.Image, stride: int) -> npt.NDArray:
+# def get_segmentator() -> rt.InferenceSession:
 
-    cropped_images = []
+#     providers = ["CPUExecutionProvider"]  # ['CUDAExecutionProvider']
+#     session = rt.InferenceSession("./models/model_ML_v2.onnx", providers=providers)
+#     batch_size = session.get_inputs()[0].shape[0]
+#     img_size_h = session.get_inputs()[0].shape[2]
+#     channels = session.get_inputs()[0].shape[3]
 
-    image = image.resize((1024, 1024))
-    width, height = image.size
+#     logger.info(
+#         f"Model loaded. Batch_size: {batch_size}, size: {img_size_h}, channels: {channels}.",
+#     )
 
-    grid = list(
-        product(
-            range(0, height - height % stride, stride),
-            range(0, width - width % stride, stride),
-        ),
-    )
-    for idy, idx in grid:
-        box = (idx, idy, idx + stride, idy + stride)
-
-        cropped_image = image.crop(box)
-        cropped_image = np.asarray(cropped_image).astype("float32") / 255
-
-        cropped_images.append(cropped_image)
-
-    return np.array(cropped_images)
-
-
-def postprocess(
-    inference: List[npt.NDArray[np.float32]],
-) -> Tuple[npt.NDArray[np.uint8], npt.NDArray]:
-
-    # compute mask
-    predicted_masks = np.argmax(inference[0], axis=-1)
-
-    # TODO : switch to einsum
-    predicted_masks = (
-        predicted_masks.reshape((4, 4, 256, 256))
-        .transpose(0, 2, 1, 3)
-        .reshape((4 * 256, 4 * 256))
-    )
-
-    # mask = predicted_masks.astype(np.float64) / 3  # normalize the data to 0 - 1
-    # mask = 255 * mask  # Now scale by 255
-    # mask = mask.astype(np.uint8)
-
-    # compute probabilities
-    probabilities = np.max(inference[0], axis=-1)
-
-    probabilities = (
-        probabilities.reshape((4, 4, 256, 256))
-        .transpose(0, 2, 1, 3)
-        .reshape((4 * 256, 4 * 256))
-    )
-
-    return predicted_masks, probabilities
-
-
-def split_by_value(img: npt.NDArray, num_classes: int) -> npt.NDArray:
-    height, width = img.shape[0], img.shape[1]
-    split_mask = np.zeros((height, width))
-    split_mask = np.expand_dims(split_mask, axis=-1)
-    for idx in range(1, num_classes):
-        mask = img[:, :] == idx
-        mask = np.expand_dims(mask, axis=-1)
-        split_mask = np.concatenate((split_mask, mask), axis=-1)
-
-    return split_mask
-
-
-def compute_segmentation_score(
-    labeled_mask: np.ndarray,
-    probabilities: np.ndarray,
-    num_segment: int,
-) -> float:
-    """Compute the segmentation score of a given segmented zone.
-
-    Given a `labeled_mask` (ie a numpy array with only integer values),
-    and the corresponding `probabilities` (a numpy array of the same size where to each
-    element of the first correspond a probability, a float in [0,1].), isolate
-    the zone of the `labeled_mask` with only the value `num_segment` and compute
-    the associated mean probability (`mean_score_segment`) of this segment.
-
-    Args:
-        probabilities (np.ndarray): A numpy array of size (H,W) with float values in [0,1].
-        labeled_mask (np.ndarray): A numpy array of size (H,W) with integer values.
-        num_segment (int): An integer corresponding to the zone we want to isolate.
-
-    Returns:
-        float: The mean probability of the isolated zone.
-    """
-
-    segment = labeled_mask == num_segment
-    score_segment = probabilities * segment
-    area_segment = np.sum(score_segment > 0)
-    mean_score_segment = np.sum(score_segment) / area_segment
-
-    return mean_score_segment
+#     return session
 
 
 def draw_detection(
     image_path: str,
-    mask: np.ndarray,
-    probabilities: np.ndarray,
+    mask: npt.NDArray,
+    probabilities: npt.NDArray,
     img_size_w: int = 1024,
     img_size_h: int = 1024,
     min_probability: float = 0.50,
@@ -184,9 +216,11 @@ def draw_detection(
     mean_scores_levure = []
     mean_scores_moisissure = []
 
-    _, threshold_levure = cv2.threshold(mask, 180, 255, cv2.THRESH_BINARY)
-    _, threshold2 = cv2.threshold(mask, 160, 255, cv2.THRESH_BINARY)
-    threshold_moisissure = threshold2 - threshold_levure
+    split_mask = split_by_value(img=mask, num_classes=4)
+
+    # _, threshold_levure = cv2.threshold(mask, 180, 255, cv2.THRESH_BINARY)
+    # _, threshold2 = cv2.threshold(mask, 160, 255, cv2.THRESH_BINARY)
+    # threshold_moisissure = threshold2 - threshold_levure
 
     labeled_levure, num_levures = label(threshold_levure, return_num=True)
     props_levure = regionprops(labeled_levure)
@@ -280,20 +314,4 @@ def draw_detection(
 
 
 def get_segments(session, binary_image):
-
-    input_image = Image.open(binary_image.file).convert("RGB")
-
-    preprocessed_image = preprocess(input_image, 256)
-    logger.info(
-        f"Preprocessing : {preprocessed_image.shape}, {type(preprocessed_image)}",
-    )
-
-    predicted_masks = session.run(["activation"], {"input": preprocessed_image})
-    logger.info(f"Prediction1 : {type(predicted_masks)}")
-    logger.info(f"Prediction2 : {predicted_masks[0].shape}, {type(predicted_masks[0])}")
-
-    postprocessed_masks, postprocessed_probabilities = postprocess(predicted_masks)
-
-    # return Image.fromarray(postprocessed_masks).resize((1024, 1024))
-
-    return postprocessed_masks
+    pass

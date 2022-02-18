@@ -17,7 +17,7 @@
   "trailing-spaces.trimOnSave": true,
   // config python
   "python.languageServer": "Pylance",
-  "python.analysis.typeCheckingMode": "basic",
+  "python.analysis.typeCheckingMode": "off",
   "python.sortImports.path": "isort",
   "python.sortImports.args": ["-sp setup.cfg"],
   "[python]": {
