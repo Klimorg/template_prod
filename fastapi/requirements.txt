@@ -1,7 +1,7 @@
 fastapi==0.73.0
 python-multipart==0.0.5
 aiofiles==0.8.0
-numpy==1.22.2
+numpy==1.22.3
 opencv_python==4.5.5.62
 scikit_image==0.19.1
 loguru==0.6.0
